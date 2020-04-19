@@ -2,6 +2,9 @@ const serverless = require('serverless-http');
 const express = require('express')
 const app = express()
 const bodyParser = require('body-parser');
+const _ = require('lodash');
+
+
 
 const AWS = require('aws-sdk');
 const uuid = require('node-uuid');
@@ -31,39 +34,13 @@ app.get('/books', (req, res) => {
     TableName: BOOK_TABLE,
   };
   dynamoDb.scan(params, (error, result) => {
+
     if (error) {
       res.status(400).json({ error: 'Error retrieving books' });
     }
-    const { Items: books } = result;
+    const { Items: books } = result
     res.json({ books });
   })
-});
-
-app.post('/book', (req, res) => {
-  const {
-    bookId,
-    name,
-    authorName
-  } = req.body;
-  const bookId = uuid.v4();
-  const params = {
-    TableName: BOOK_TABLE,
-    Item: {
-      bookId,
-      name,
-      releaseDate: new Date.now(),
-      authorName
-    },
-  };
-   dynamoDb.put(params, (error) => {
-    if (error) {
-      res.status(400).json({ error: 'Could not create Book', error });
-    }else {
-
-      res.send({ data: "Data saved Success" });
-    }
-  });
-
 });
 
 app.get('/book/:bookId', (req, res) => {
@@ -78,29 +55,63 @@ app.get('/book/:bookId', (req, res) => {
     if (error) {
       res.status(400).json({ error: 'Error retrieving Book' });
     }
-    if (result.Item) {
-      const { bookId, title, done } = result.Item;
-      res.json({ bookId, title, done });
+    if (!_.isEmpty(result.Item)) {
+      const { bookId, releaseDate, authorName, bookName } = result.Item;
+      res.json({ bookId, releaseDate, authorName, bookName });
     } else {
       res.status(404).json({ error: `Book with id: ${bookId} not found` });
     }
   });
 });
 
+app.post('/book', (req, res) => {
+  const {
+    bookName,
+    authorName
+  } = req.body;
+  const bookId = uuid.v4();
+  const params = {
+    TableName: BOOK_TABLE,
+    Item: {
+      bookId,
+      bookName,
+      releaseDate: (new Date()).toISOString(),
+      authorName
+    },
+  };
+   dynamoDb.put(params, (error, result)  => {
+     console.log(">>>>>>>>  ", error, " >>>>>>>>>>>>>>  ", result)
+    if (error) {
+      res.status(400).json({ error: 'Could not create Book', error });
+    }else {
+
+      res.send({ data: "Book Saved Successfully" });
+    }
+  });
+
+});
+
+
+
 app.put('/book', (req, res) => {
-  const { bookId, title, done } = req.body;
   var params = {
     TableName: BOOK_TABLE,
-    Key: { bookId },
-    UpdateExpression: 'set #a = :title, #b = :done',
-    ExpressionAttributeNames: { '#a': 'title', '#b': 'done' },
-    ExpressionAttributeValues: { ':title': title, ':done': done },
+    Key:{
+      bookId :req.body.bookId 
+    },
+    UpdateExpression: "set bookName=:n, releaseDate=:r, authorName=:a",
+    ExpressionAttributeValues:{
+        ":n":req.body.bookName,
+        ":r":req.body.releaseDate,
+        ":a":req.body.authorName
+    },
+    ReturnValues:"UPDATED_NEW"
   };
-  dynamoDb.update(params, (error) => {
+  dynamoDb.update(params, (error,result) => {
     if (error) {
       res.status(400).json({ error: 'Could not update Book' });
     }
-    res.json({ bookId, title, done });
+    res.json({ ...result.Attributes , message: "Book updated Successfully"});
   })
 });
 
@@ -116,14 +127,11 @@ app.delete('/book/:bookId', (req, res) => {
     if (error) {
       res.status(400).json({ error: 'Could not delete Book' });
     }
-    res.json({ success: true });
+    res.json({ success: true , message: "Book Delete Successfully" });
   });
 });
 
 
 
-app.get('/', function (req, res) {
-  res.send('Hello World!')
-})
 
 module.exports.handler = serverless(app);
